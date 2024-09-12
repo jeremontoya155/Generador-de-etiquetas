@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, colorchooser
 from tkinter import ttk
 import pandas as pd
 from PIL import Image, ImageTk
@@ -11,14 +11,6 @@ class ApliPrintApp:
         self.root = root
         self.root.title("Apli Print Online - Distribución Avanzada")
         self.root.geometry("1400x900")
-
-        # Configuración del estilo general
-        style = ttk.Style()
-        style.configure("TButton", padding=6, relief="flat", background="#ccc")
-        style.configure("TLabel", padding=5, font=("Helvetica", 10))
-        style.configure("TEntry", padding=5)
-        style.configure("TFrame", background="#f5f5f5")
-        style.configure("TLabelFrame", background="#f5f5f5", font=("Helvetica", 12, "bold"))
 
         # Variables para almacenar datos
         self.df = None
@@ -33,6 +25,7 @@ class ApliPrintApp:
         self.vertical_margin = None
         self.text_size = 10  # Tamaño de texto predeterminado
         self.font_sizes = {}  # Tamaño de fuente para cada campo
+        self.text_colors = {}  # Color del texto
         self.label_distribution = []  # Distribución de etiquetas
 
         # Creación de la interfaz
@@ -63,20 +56,25 @@ class ApliPrintApp:
         self.config_distribution_btn = ttk.Button(button_frame, text="Configurar Distribución", command=self.show_distribution_window)
         self.config_distribution_btn.pack(side=tk.LEFT, padx=5)
 
-        # Control de tamaño de fuente
-        self.font_size_label = ttk.Label(button_frame, text="Tamaño de fuente:")
-        self.font_size_label.pack(side=tk.LEFT, padx=5)
-
-        self.font_size_entry = ttk.Entry(button_frame, width=5)
-        self.font_size_entry.insert(0, "12")  # Tamaño de fuente predeterminado
-        self.font_size_entry.pack(side=tk.LEFT, padx=5)
-
-        self.update_font_btn = ttk.Button(button_frame, text="Actualizar Fuente", command=self.update_font_size)
-        self.update_font_btn.pack(side=tk.LEFT, padx=5)
-
         # Crear un canvas para mostrar la imagen de fondo y los encabezados
         self.canvas = tk.Canvas(main_frame, bg="grey")
         self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Controles para el tamaño y color del texto
+        control_frame = ttk.LabelFrame(main_frame, text="Controles de Texto e Imagen", padding="10 10 10 10")
+        control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
+
+        # Control deslizante para el tamaño del texto
+        self.text_size_slider = tk.Scale(control_frame, from_=8, to=40, orient=tk.HORIZONTAL, label="Tamaño del Texto", command=self.update_text_size)
+        self.text_size_slider.pack(side=tk.LEFT, padx=10)
+
+        # Botón para cambiar el color del texto
+        self.color_button = ttk.Button(control_frame, text="Cambiar Color de Texto", command=self.change_text_color)
+        self.color_button.pack(side=tk.LEFT, padx=10)
+
+        # Control deslizante para el tamaño de la imagen de fondo
+        self.image_size_slider = tk.Scale(control_frame, from_=0.5, to=2.0, resolution=0.1, orient=tk.HORIZONTAL, label="Tamaño de la Imagen de Fondo", command=self.update_background_size)
+        self.image_size_slider.pack(side=tk.LEFT, padx=10)
 
     def load_file(self):
         # Abrir archivo Excel o txt y convertirlo a DataFrame
@@ -116,6 +114,7 @@ class ApliPrintApp:
             font_size_entry = ttk.Entry(frame, width=5, textvariable=font_size_var)
             font_size_entry.pack(side=tk.RIGHT, padx=5)
             self.font_sizes[column] = font_size_var
+            self.text_colors[column] = "black"  # Color de texto por defecto
 
         # Botón para confirmar la selección y cerrar la ventana
         confirm_btn = ttk.Button(self.selection_window, text="Confirmar", command=self.confirm_column_selection)
@@ -140,7 +139,8 @@ class ApliPrintApp:
             for idx, column in enumerate(self.df.columns):
                 if self.selected_columns[column].get():
                     # Crear el texto del encabezado en una posición inicial arbitraria
-                    text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, fill="black", font=("Arial", int(self.font_sizes[column].get())), tags="draggable")
+                    font_size = int(self.font_sizes[column].get())
+                    text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, fill=self.text_colors[column], font=("Arial", font_size), tags="draggable")
 
                     # Guardar el ID del texto en la posición inicial
                     self.labels_positions[column] = (100, 50 + (idx * 30))
@@ -152,63 +152,65 @@ class ApliPrintApp:
         else:
             messagebox.showwarning("Advertencia", "El DataFrame está vacío o no se cargó correctamente.")
 
+    def update_text_size(self, value):
+        # Actualizar el tamaño del texto seleccionado
+        for column in self.selected_columns:
+            if self.selected_columns[column].get():
+                font_size = int(value)
+                self.font_sizes[column].set(font_size)
+        self.show_headers()
+
+    def change_text_color(self):
+        # Cambiar el color del texto seleccionado
+        color = colorchooser.askcolor()[1]
+        if color:
+            for column in self.selected_columns:
+                if self.selected_columns[column].get():
+                    self.text_colors[column] = color
+            self.show_headers()
+
+    def update_background_size(self, value):
+        # Cambiar el tamaño de la imagen de fondo
+        if self.background_image:
+            new_width = int(self.background_image.width * float(value))
+            new_height = int(self.background_image.height * float(value))
+            resized_image = self.background_image.resize((new_width, new_height), Image.LANCZOS)
+            self.background_photo = ImageTk.PhotoImage(resized_image)
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.background_photo)
+            self.show_headers()
+
+    # Métodos para arrastrar los textos en el canvas
     def start_drag(self, event):
-        # Iniciar arrastre del encabezado
         self.dragging_label = self.canvas.find_withtag("current")
         self.drag_start_x = event.x
         self.drag_start_y = event.y
 
     def do_drag(self, event):
-        # Mover el encabezado arrastrado en el canvas
         if self.dragging_label:
-            # Calcular el desplazamiento
             dx = event.x - self.drag_start_x
             dy = event.y - self.drag_start_y
-
-            # Mover el texto dentro del canvas
             self.canvas.move(self.dragging_label, dx, dy)
-
-            # Actualizar la posición inicial del cursor para el próximo movimiento
             self.drag_start_x = event.x
             self.drag_start_y = event.y
 
     def end_drag(self, event):
-        # Guardar la posición donde se soltó el encabezado
         if self.dragging_label:
-            # Obtener las nuevas coordenadas del texto
             x, y = self.canvas.coords(self.dragging_label)
-            # Guardar la nueva posición del encabezado
             column_name = self.canvas.itemcget(self.dragging_label, "text")
             self.labels_positions[column_name] = (x, y)
             self.dragging_label = None
 
     def load_background_image(self):
-        # Cargar una imagen de fondo
         file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.png *.jpg *.jpeg")])
         if file_path:
             try:
                 self.background_image = Image.open(file_path)
-                self.background_image_path = file_path  # Guardar la ruta para exportar
-                self.background_image = self.background_image.resize((self.canvas.winfo_width(), self.canvas.winfo_height()), Image.LANCZOS)
+                self.background_image_path = file_path
                 self.background_photo = ImageTk.PhotoImage(self.background_image)
                 self.canvas.create_image(0, 0, anchor=tk.NW, image=self.background_photo)
-                self.canvas.config(scrollregion=self.canvas.bbox(tk.ALL))  # Ajustar el área de desplazamiento del canvas
-                
-                # Mostrar nuevamente los encabezados para que se dibujen sobre la imagen
                 self.show_headers()
             except Exception as e:
                 messagebox.showerror("Error", f"Error cargando la imagen: {e}")
-
-    def update_font_size(self):
-        # Actualizar el tamaño de fuente para los encabezados visibles
-        try:
-            new_font_size = int(self.font_size_entry.get())
-            for column in self.selected_columns:
-                if self.selected_columns[column].get():
-                    self.font_sizes[column].set(str(new_font_size))  # Cambiar el tamaño de fuente
-            self.show_headers()  # Redibujar encabezados con el nuevo tamaño
-        except ValueError:
-            messagebox.showerror("Error", "Introduce un tamaño de fuente válido.")
 
     def show_distribution_window(self):
         # Ventana emergente para seleccionar la distribución de etiquetas por sucursal
@@ -303,7 +305,7 @@ class ApliPrintApp:
         for column, (x, y) in self.labels_positions.items():
             if self.selected_columns[column].get():
                 font_size = int(self.font_sizes[column].get())
-                preview_canvas.create_text(x, y, text=column, font=("Helvetica", font_size), fill="black")
+                preview_canvas.create_text(x, y, text=column, font=("Helvetica", font_size), fill=self.text_colors[column])
 
     def export_to_pdf(self):
         # Obtener las dimensiones de las etiquetas ingresadas
@@ -383,6 +385,7 @@ class ApliPrintApp:
                 self.export_window.destroy()
             except Exception as e:
                 messagebox.showerror("Error", f"Error generando el PDF: {e}")
+
 
 if __name__ == "__main__":
     root = tk.Tk()
