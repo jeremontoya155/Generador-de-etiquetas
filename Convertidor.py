@@ -5,6 +5,7 @@ import pandas as pd
 from PIL import Image, ImageTk
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+import tkinter.font as tkFont  # Para obtener las fuentes disponibles
 
 class ApliPrintApp:
     def __init__(self, root):
@@ -26,7 +27,11 @@ class ApliPrintApp:
         self.text_size = 10  # Tamaño de texto predeterminado
         self.font_sizes = {}  # Tamaño de fuente para cada campo
         self.text_colors = {}  # Color del texto
+        self.font_families = {}  # Familia de fuentes para cada campo
         self.label_distribution = []  # Distribución de etiquetas
+
+        # Obtener las fuentes disponibles en el sistema
+        self.available_fonts = list(tkFont.families())
 
         # Creación de la interfaz
         self.create_widgets()
@@ -60,7 +65,7 @@ class ApliPrintApp:
         self.canvas = tk.Canvas(main_frame, bg="grey")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # Controles para el tamaño y color del texto
+        # Controles para el tamaño, color y fuente del texto
         control_frame = ttk.LabelFrame(main_frame, text="Controles de Texto e Imagen", padding="10 10 10 10")
         control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
 
@@ -75,6 +80,13 @@ class ApliPrintApp:
         # Control deslizante para el tamaño de la imagen de fondo
         self.image_size_slider = tk.Scale(control_frame, from_=0.5, to=2.0, resolution=0.1, orient=tk.HORIZONTAL, label="Tamaño de la Imagen de Fondo", command=self.update_background_size)
         self.image_size_slider.pack(side=tk.LEFT, padx=10)
+
+        # Combobox para seleccionar la fuente del texto
+        ttk.Label(control_frame, text="Fuente del Texto:").pack(side=tk.LEFT, padx=5)
+        self.font_selector = ttk.Combobox(control_frame, values=self.available_fonts, state="readonly")
+        self.font_selector.set("Arial")  # Fuente por defecto
+        self.font_selector.pack(side=tk.LEFT, padx=10)
+        self.font_selector.bind("<<ComboboxSelected>>", self.update_font_family)
 
     def load_file(self):
         # Abrir archivo Excel o txt y convertirlo a DataFrame
@@ -115,6 +127,7 @@ class ApliPrintApp:
             font_size_entry.pack(side=tk.RIGHT, padx=5)
             self.font_sizes[column] = font_size_var
             self.text_colors[column] = "black"  # Color de texto por defecto
+            self.font_families[column] = "Arial"  # Fuente por defecto
 
         # Botón para confirmar la selección y cerrar la ventana
         confirm_btn = ttk.Button(self.selection_window, text="Confirmar", command=self.confirm_column_selection)
@@ -140,7 +153,8 @@ class ApliPrintApp:
                 if self.selected_columns[column].get():
                     # Crear el texto del encabezado en una posición inicial arbitraria
                     font_size = int(self.font_sizes[column].get())
-                    text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, fill=self.text_colors[column], font=("Arial", font_size), tags="draggable")
+                    font_family = self.font_families[column]
+                    text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, fill=self.text_colors[column], font=(font_family, font_size), tags="draggable")
 
                     # Guardar el ID del texto en la posición inicial
                     self.labels_positions[column] = (100, 50 + (idx * 30))
@@ -168,6 +182,14 @@ class ApliPrintApp:
                 if self.selected_columns[column].get():
                     self.text_colors[column] = color
             self.show_headers()
+
+    def update_font_family(self, event):
+        # Actualizar la fuente del texto seleccionado
+        selected_font = self.font_selector.get()
+        for column in self.selected_columns:
+            if self.selected_columns[column].get():
+                self.font_families[column] = selected_font
+        self.show_headers()
 
     def update_background_size(self, value):
         # Cambiar el tamaño de la imagen de fondo
@@ -305,7 +327,8 @@ class ApliPrintApp:
         for column, (x, y) in self.labels_positions.items():
             if self.selected_columns[column].get():
                 font_size = int(self.font_sizes[column].get())
-                preview_canvas.create_text(x, y, text=column, font=("Helvetica", font_size), fill=self.text_colors[column])
+                font_family = self.font_families[column]
+                preview_canvas.create_text(x, y, text=column, font=(font_family, font_size), fill=self.text_colors[column])
 
     def export_to_pdf(self):
         # Obtener las dimensiones de las etiquetas ingresadas
@@ -353,7 +376,8 @@ class ApliPrintApp:
                             rel_x = x_pos + (x / self.canvas.winfo_width()) * self.label_width
                             rel_y = y_pos + (y / self.canvas.winfo_height()) * self.label_height
                             font_size = int(self.font_sizes[column].get())
-                            c.setFont("Helvetica", font_size)  # Establecer el tamaño de la fuente
+                            font_family = self.font_families[column]
+                            c.setFont(font_family, font_size)  # Establecer el tamaño y la fuente
                             c.drawString(rel_x, rel_y, str(row[column]))
 
                     current_col += 1
