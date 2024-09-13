@@ -5,7 +5,6 @@ import pandas as pd
 from PIL import Image, ImageTk
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import tkinter.font as tkFont  # Para obtener las fuentes disponibles
 
 class ApliPrintApp:
     def __init__(self, root):
@@ -27,11 +26,7 @@ class ApliPrintApp:
         self.text_size = 10  # Tamaño de texto predeterminado
         self.font_sizes = {}  # Tamaño de fuente para cada campo
         self.text_colors = {}  # Color del texto
-        self.font_families = {}  # Familia de fuentes para cada campo
         self.label_distribution = []  # Distribución de etiquetas
-
-        # Obtener las fuentes disponibles en el sistema
-        self.available_fonts = list(tkFont.families())
 
         # Creación de la interfaz
         self.create_widgets()
@@ -65,12 +60,12 @@ class ApliPrintApp:
         self.canvas = tk.Canvas(main_frame, bg="grey")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # Controles para el tamaño, color y fuente del texto
+        # Controles para el tamaño y color del texto
         control_frame = ttk.LabelFrame(main_frame, text="Controles de Texto e Imagen", padding="10 10 10 10")
         control_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
 
         # Control deslizante para el tamaño del texto
-        self.text_size_slider = tk.Scale(control_frame, from_=8, to=40, orient=tk.HORIZONTAL, label="Tamaño del Texto", command=self.update_text_size)
+        self.text_size_slider = tk.Scale(control_frame, from_=5, to=40, orient=tk.HORIZONTAL, label="Tamaño del Texto", command=self.update_text_size)
         self.text_size_slider.pack(side=tk.LEFT, padx=10)
 
         # Botón para cambiar el color del texto
@@ -80,13 +75,6 @@ class ApliPrintApp:
         # Control deslizante para el tamaño de la imagen de fondo
         self.image_size_slider = tk.Scale(control_frame, from_=0.5, to=2.0, resolution=0.1, orient=tk.HORIZONTAL, label="Tamaño de la Imagen de Fondo", command=self.update_background_size)
         self.image_size_slider.pack(side=tk.LEFT, padx=10)
-
-        # Combobox para seleccionar la fuente del texto
-        ttk.Label(control_frame, text="Fuente del Texto:").pack(side=tk.LEFT, padx=5)
-        self.font_selector = ttk.Combobox(control_frame, values=self.available_fonts, state="readonly")
-        self.font_selector.set("Arial")  # Fuente por defecto
-        self.font_selector.pack(side=tk.LEFT, padx=10)
-        self.font_selector.bind("<<ComboboxSelected>>", self.update_font_family)
 
     def load_file(self):
         # Abrir archivo Excel o txt y convertirlo a DataFrame
@@ -103,6 +91,58 @@ class ApliPrintApp:
                 messagebox.showerror("Error", f"Error cargando el archivo: {e}")
 
     def show_column_selection(self):
+        # Crear una nueva ventana para seleccionar los encabezados que se desean arrastrar
+        self.selection_window = tk.Toplevel(self.root)
+        self.selection_window.title("Seleccionar Columnas")
+        self.selection_window.geometry("400x400")
+
+        self.selected_columns.clear()
+
+        # Crear un frame principal dentro de la ventana
+        container_frame = ttk.Frame(self.selection_window)
+        container_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Canvas para agregar el scrollbar
+        canvas = tk.Canvas(container_frame)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Scrollbar vertical
+        scrollbar = ttk.Scrollbar(container_frame, orient=tk.VERTICAL, command=canvas.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Frame donde estarán los checkboxes, dentro del canvas
+        checkbox_frame = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=checkbox_frame, anchor="nw")
+
+        # Asociar el scrollbar al canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Crear checkboxes para cada encabezado y campos para seleccionar el tamaño de fuente
+        for column in self.df.columns:
+            var = tk.BooleanVar(value=True)
+            frame = ttk.Frame(checkbox_frame)  # Poner los checkboxes dentro del frame
+            frame.pack(fill=tk.X, padx=5, pady=5)
+
+            # Checkbox para incluir el campo
+            cb = tk.Checkbutton(frame, text=column, variable=var)
+            cb.pack(side=tk.LEFT, padx=5)
+            self.selected_columns[column] = var
+
+            # Campo para ajustar el tamaño de fuente
+            font_size_var = tk.StringVar(value="12")  # Tamaño de fuente por defecto
+            font_size_entry = ttk.Entry(frame, width=5, textvariable=font_size_var)
+            font_size_entry.pack(side=tk.RIGHT, padx=5)
+            self.font_sizes[column] = font_size_var
+            self.text_colors[column] = "black"  # Color de texto por defecto
+
+        # Actualizar el scroll region una vez que los widgets han sido colocados
+        checkbox_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+        # Botón para confirmar la selección y cerrar la ventana
+        confirm_btn = ttk.Button(self.selection_window, text="Confirmar", command=self.confirm_column_selection)
+        confirm_btn.pack(pady=10)
+
         # Crear una nueva ventana para seleccionar los encabezados que se desean arrastrar
         self.selection_window = tk.Toplevel(self.root)
         self.selection_window.title("Seleccionar Columnas")
@@ -127,7 +167,6 @@ class ApliPrintApp:
             font_size_entry.pack(side=tk.RIGHT, padx=5)
             self.font_sizes[column] = font_size_var
             self.text_colors[column] = "black"  # Color de texto por defecto
-            self.font_families[column] = "Arial"  # Fuente por defecto
 
         # Botón para confirmar la selección y cerrar la ventana
         confirm_btn = ttk.Button(self.selection_window, text="Confirmar", command=self.confirm_column_selection)
@@ -153,8 +192,18 @@ class ApliPrintApp:
                 if self.selected_columns[column].get():
                     # Crear el texto del encabezado en una posición inicial arbitraria
                     font_size = int(self.font_sizes[column].get())
-                    font_family = self.font_families[column]
-                    text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, fill=self.text_colors[column], font=(font_family, font_size), tags="draggable")
+                    try:
+                        # Intentar usar la fuente seleccionada
+                        text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, 
+                                                        fill=self.text_colors[column], 
+                                                        font=("Helvetica", font_size), 
+                                                        tags="draggable")
+                    except tk.TclError:
+                        # Si hay un error con la fuente, usar Arial como fallback
+                        text_id = self.canvas.create_text(100, 50 + (idx * 30), text=column, 
+                                                        fill=self.text_colors[column], 
+                                                        font=("Arial", font_size), 
+                                                        tags="draggable")
 
                     # Guardar el ID del texto en la posición inicial
                     self.labels_positions[column] = (100, 50 + (idx * 30))
@@ -167,12 +216,12 @@ class ApliPrintApp:
             messagebox.showwarning("Advertencia", "El DataFrame está vacío o no se cargó correctamente.")
 
     def update_text_size(self, value):
-        # Actualizar el tamaño del texto seleccionado
-        for column in self.selected_columns:
-            if self.selected_columns[column].get():
-                font_size = int(value)
-                self.font_sizes[column].set(font_size)
-        self.show_headers()
+        # Afectar solo al encabezado que está seleccionado (marcado)
+        if self.selected_header:
+            font_size = int(value)
+            self.font_sizes[self.selected_header].set(font_size)  # Actualizar el tamaño solo para ese encabezado
+            self.show_headers()  # Actualizar la visualización en el canvas
+
 
     def change_text_color(self):
         # Cambiar el color del texto seleccionado
@@ -182,14 +231,6 @@ class ApliPrintApp:
                 if self.selected_columns[column].get():
                     self.text_colors[column] = color
             self.show_headers()
-
-    def update_font_family(self, event):
-        # Actualizar la fuente del texto seleccionado
-        selected_font = self.font_selector.get()
-        for column in self.selected_columns:
-            if self.selected_columns[column].get():
-                self.font_families[column] = selected_font
-        self.show_headers()
 
     def update_background_size(self, value):
         # Cambiar el tamaño de la imagen de fondo
@@ -206,6 +247,11 @@ class ApliPrintApp:
         self.dragging_label = self.canvas.find_withtag("current")
         self.drag_start_x = event.x
         self.drag_start_y = event.y
+        # Obtener el nombre del encabezado que has seleccionado
+        column_name = self.canvas.itemcget(self.dragging_label, "text")
+        # Almacenar el encabezado seleccionado para que el control deslizante solo lo afecte a él
+        self.selected_header = column_name
+
 
     def do_drag(self, event):
         if self.dragging_label:
@@ -297,11 +343,11 @@ class ApliPrintApp:
         self.vertical_margin_entry.insert(0, "5")  # Valor por defecto
         self.vertical_margin_entry.pack(pady=5)
 
-        # Crear campo para el tamaño del texto por defecto
-        ttk.Label(self.export_window, text="Tamaño del texto por defecto (puntos):").pack(pady=5)
-        self.text_size_entry = ttk.Entry(self.export_window)
-        self.text_size_entry.insert(0, "10")  # Valor por defecto
-        self.text_size_entry.pack(pady=5)
+        # # Crear campo para el tamaño del texto por defecto
+        # ttk.Label(self.export_window, text="Tamaño del texto por defecto (puntos):").pack(pady=5)
+        # self.text_size_entry = ttk.Entry(self.export_window)
+        # self.text_size_entry.insert(0, "10")  # Valor por defecto
+        # self.text_size_entry.pack(pady=5)
 
         # Crear checkbox para duplicar etiquetas
         self.duplicate_labels_var = tk.BooleanVar()
@@ -327,17 +373,15 @@ class ApliPrintApp:
         for column, (x, y) in self.labels_positions.items():
             if self.selected_columns[column].get():
                 font_size = int(self.font_sizes[column].get())
-                font_family = self.font_families[column]
-                preview_canvas.create_text(x, y, text=column, font=(font_family, font_size), fill=self.text_colors[column])
+                preview_canvas.create_text(x, y, text=column, font=("Helvetica", font_size), fill=self.text_colors[column])
 
     def export_to_pdf(self):
-        # Obtener las dimensiones de las etiquetas ingresadas
+    # Obtener las dimensiones de las etiquetas ingresadas
         try:
             self.label_width = float(self.label_width_entry.get()) * 2.83465  # Convertir de mm a puntos (1 mm = 2.83465 puntos)
             self.label_height = float(self.label_height_entry.get()) * 2.83465
             self.horizontal_margin = float(self.horizontal_margin_entry.get()) * 2.83465
             self.vertical_margin = float(self.vertical_margin_entry.get()) * 2.83465
-            self.text_size = int(self.text_size_entry.get())  # Tamaño del texto en puntos
         except ValueError:
             messagebox.showerror("Error", "Por favor, ingresa dimensiones válidas.")
             return
@@ -375,9 +419,8 @@ class ApliPrintApp:
                             # Calcular las posiciones relativas dentro de la etiqueta
                             rel_x = x_pos + (x / self.canvas.winfo_width()) * self.label_width
                             rel_y = y_pos + (y / self.canvas.winfo_height()) * self.label_height
-                            font_size = int(self.font_sizes[column].get())
-                            font_family = self.font_families[column]
-                            c.setFont(font_family, font_size)  # Establecer el tamaño y la fuente
+                            font_size = int(self.font_sizes[column].get())  # Usar el tamaño de fuente seleccionado por columna
+                            c.setFont("Helvetica", font_size)  # Establecer el tamaño de la fuente
                             c.drawString(rel_x, rel_y, str(row[column]))
 
                     current_col += 1
@@ -409,6 +452,84 @@ class ApliPrintApp:
                 self.export_window.destroy()
             except Exception as e:
                 messagebox.showerror("Error", f"Error generando el PDF: {e}")
+
+            # Obtener las dimensiones de las etiquetas ingresadas
+            try:
+                self.label_width = float(self.label_width_entry.get()) * 2.83465  # Convertir de mm a puntos (1 mm = 2.83465 puntos)
+                self.label_height = float(self.label_height_entry.get()) * 2.83465
+                self.horizontal_margin = float(self.horizontal_margin_entry.get()) * 2.83465
+                self.vertical_margin = float(self.vertical_margin_entry.get()) * 2.83465
+                self.text_size = int(self.text_size_entry.get())  # Tamaño del texto en puntos
+            except ValueError:
+                messagebox.showerror("Error", "Por favor, ingresa dimensiones válidas.")
+                return
+
+            if self.df is None or self.background_image is None:
+                messagebox.showwarning("Advertencia", "Por favor, carga un archivo y una imagen de fondo antes de exportar.")
+                return
+
+            # Seleccionar carpeta de salida para guardar el PDF
+            output_dir = filedialog.askdirectory()
+            if output_dir:
+                try:
+                    pdf_file_path = f"{output_dir}/etiquetas.pdf"
+                    c = canvas.Canvas(pdf_file_path, pagesize=A4)
+
+                    # Tamaño del área de la hoja A4
+                    pdf_width, pdf_height = A4
+                    num_columns = int((pdf_width + self.horizontal_margin) // (self.label_width + self.horizontal_margin))
+                    num_rows = int((pdf_height + self.vertical_margin) // (self.label_height + self.vertical_margin))
+
+                    # Generar las etiquetas
+                    current_row = 0
+                    current_col = 0
+
+                    for index, row in self.df.iterrows():
+                        # Dibujar la imagen de fondo para cada etiqueta
+                        x_pos = current_col * (self.label_width + self.horizontal_margin)
+                        y_pos = pdf_height - ((current_row + 1) * (self.label_height + self.vertical_margin))
+
+                        c.drawImage(self.background_image_path, x_pos, y_pos, width=self.label_width, height=self.label_height)
+
+                        # Dibujar los datos de la fila actual en las posiciones guardadas
+                        for column, (x, y) in self.labels_positions.items():
+                            if self.selected_columns[column].get():
+                                # Calcular las posiciones relativas dentro de la etiqueta
+                                rel_x = x_pos + (x / self.canvas.winfo_width()) * self.label_width
+                                rel_y = y_pos + (y / self.canvas.winfo_height()) * self.label_height
+                                font_size = int(self.font_sizes[column].get())
+                                c.setFont("Helvetica", font_size)  # Establecer el tamaño de la fuente
+                                c.drawString(rel_x, rel_y, str(row[column]))
+
+                        current_col += 1
+                        if current_col >= num_columns:
+                            current_col = 0
+                            current_row += 1
+
+                        # Si se llena una hoja, crear una nueva
+                        if current_row >= num_rows:
+                            c.showPage()  # Crear una nueva página
+                            current_row = 0
+
+                        # Si se seleccionó la opción de duplicar etiquetas, llenar toda la hoja con la misma
+                        if self.duplicate_labels_var.get():
+                            for _ in range(num_rows * num_columns - 1):  # Rellenar con copias
+                                x_pos = current_col * (self.label_width + self.horizontal_margin)
+                                y_pos = pdf_height - ((current_row + 1) * (self.label_height + self.vertical_margin))
+                                c.drawImage(self.background_image_path, x_pos, y_pos, width=self.label_width, height=self.label_height)
+                                current_col += 1
+                                if current_col >= num_columns:
+                                    current_col = 0
+                                    current_row += 1
+                                if current_row >= num_rows:
+                                    c.showPage()
+                                    current_row = 0
+
+                    c.save()
+                    messagebox.showinfo("Éxito", f"PDF generado correctamente: {pdf_file_path}")
+                    self.export_window.destroy()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Error generando el PDF: {e}")
 
 
 if __name__ == "__main__":
