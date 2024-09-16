@@ -1,20 +1,23 @@
 import pandas as pd
-from tkinter import HORIZONTAL, Tk, filedialog, Canvas, Button, Scale, Listbox, messagebox, Toplevel, Scrollbar, Label, Entry
+from tkinter import Tk, filedialog, Canvas, Button, Scale, Listbox, messagebox, Toplevel, Scrollbar, Label, Entry, HORIZONTAL, StringVar, OptionMenu, colorchooser
 from tkinter import Frame
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import os
+from reportlab.lib.utils import ImageReader
+import io  # Para manejar los buffers en memoria
 
 class EtiquetaApp:
     def __init__(self, ventana):
         self.ventana = ventana
-        self.ventana.geometry("900x800")  # Tamaño de ventana ajustado
+        self.ventana.geometry("1200x800")  # Tamaño de ventana ajustado
         self.imagen_tk = None
         self.df = None
         self.posiciones_texto = {}
         self.etiquetas = {}
         self.tamaños_texto = {}
+        self.colores_texto = {}  # Guardar colores de texto
+        self.fuentes_texto = {}  # Guardar fuentes de texto
         self.columnas_seleccionadas = []
         self.tamaño_imagen = 1.0  # Factor de escala de la imagen
         self.imagen_fondo = None
@@ -23,59 +26,79 @@ class EtiquetaApp:
         self.margen_x_custom = 0
         self.margen_y_custom = 0
 
+        # Lista de tipografías disponibles (rutas a archivos .ttf)
+        self.fuentes_disponibles = {
+            "Arial": "arial.ttf",
+            "Helvetica": "Helvetica.ttc",
+            "Courier": "cour.ttf",
+            "Times": "times.ttf",
+            "Verdana": "verdana.ttf"
+        }
+
         # Frame principal para contener la imagen y los controles a la derecha
-        self.main_frame = Frame(ventana)
+        self.main_frame = Frame(ventana, bg="#1C1C1C")  # Fondo más oscuro para mejor contraste
         self.main_frame.pack(fill="both", expand=True)
 
         # Frame para la imagen (lado izquierdo)
-        self.canvas_frame = Frame(self.main_frame, width=600, height=600)  # Ajustar el espacio para la imagen
+        self.canvas_frame = Frame(self.main_frame, width=600, height=600, bg="#1C1C1C")  # Ajustar el espacio para la imagen
         self.canvas_frame.pack(side="left", fill="both", expand=True)
 
-        self.canvas = Canvas(self.canvas_frame, width=580, height=580)  # Canvas ajustado a la ventana
+        self.canvas = Canvas(self.canvas_frame, width=580, height=580, bg="#2E2E2E", highlightthickness=2, highlightbackground="#FFD700")  # Canvas con bordes dorados
         self.canvas.pack(side="left", fill="both", expand=True)
 
         # Añadir scrollbars al canvas para que puedas desplazarte si la imagen es más grande
-        self.scroll_x = Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
+        self.scroll_x = Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview, bg="#FFD700")
         self.scroll_x.pack(side="bottom", fill="x")
-        self.scroll_y = Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.scroll_y = Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview, bg="#FFD700")
         self.scroll_y.pack(side="right", fill="y")
         self.canvas.configure(xscrollcommand=self.scroll_x.set, yscrollcommand=self.scroll_y.set)
 
         # Frame para los controles (lado derecho)
-        self.control_frame = Frame(self.main_frame, width=300)  # Ajustar el espacio para los controles
+        self.control_frame = Frame(self.main_frame, width=300, bg="#1C1C1C")  # Fondo oscuro
         self.control_frame.pack(side="right", fill="y")
 
         # Scroll para los controles si no caben en la pantalla
-        self.control_scroll_y = Scrollbar(self.control_frame, orient="vertical")
+        self.control_scroll_y = Scrollbar(self.control_frame, orient="vertical", bg="#FFD700")
         self.control_scroll_y.pack(side="right", fill="y")
 
-        self.control_canvas = Canvas(self.control_frame, yscrollcommand=self.control_scroll_y.set)
+        self.control_canvas = Canvas(self.control_frame, yscrollcommand=self.control_scroll_y.set, bg="#1C1C1C")
         self.control_canvas.pack(side="left", fill="both", expand=True)
         self.control_scroll_y.config(command=self.control_canvas.yview)
 
-        self.control_inner_frame = Frame(self.control_canvas)
+        self.control_inner_frame = Frame(self.control_canvas, bg="#1C1C1C")
         self.control_canvas.create_window((0, 0), window=self.control_inner_frame, anchor="nw")
         self.control_inner_frame.bind("<Configure>", lambda e: self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all")))
 
-    # Ajustar el tamaño del canvas cuando el contenido cambie
-    def on_configure(self, event):
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        # Botones estilizados con mayor contraste y negrita
+        self.boton_cargar_excel = Button(self.control_inner_frame, text="🗂 Cargar archivo Excel", command=self.cargar_excel, bg="#FFD700", fg="#1C1C1C", font=("Arial", 12, "bold"), relief="flat", pady=10)
+        self.boton_cargar_excel.pack(fill="x", pady=10)
+
+        self.boton_cargar_imagen = Button(self.control_inner_frame, text="🖼 Cargar imagen", command=self.cargar_imagen, bg="#FFD700", fg="#1C1C1C", font=("Arial", 12, "bold"), relief="flat", pady=10)
+        self.boton_cargar_imagen.pack(fill="x", pady=10)
+
+        self.boton_seleccionar_columnas = Button(self.control_inner_frame, text="📑 Seleccionar columnas", command=self.seleccionar_columnas, state="disabled", bg="#FF6347", fg="black", font=("Arial", 12, "bold"), relief="flat", pady=10)
+        self.boton_seleccionar_columnas.pack(fill="x", pady=10)
 
     def cargar_excel(self):
         ruta_excel = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
         if ruta_excel:
             try:
                 self.df = pd.read_excel(ruta_excel)
-                return self.df
+                self.boton_seleccionar_columnas.config(state="normal")  # Habilitar botón de seleccionar columnas
+                messagebox.showinfo("Éxito", "Archivo Excel cargado exitosamente.")
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo cargar el archivo Excel: {str(e)}")
         return None
 
     def seleccionar_columnas(self):
+        if self.df is None:
+            messagebox.showerror("Error", "Primero carga un archivo Excel.")
+            return
+        
         def seleccionar():
             seleccionadas = [self.df.columns[i] for i in listbox.curselection()]
-            if len(seleccionadas) < 3:
-                messagebox.showwarning("Advertencia", "Debes seleccionar al menos 3 columnas.")
+            if len(seleccionadas) < 1:  # Cambiado a mínimo 1 columna
+                messagebox.showwarning("Advertencia", "Debes seleccionar al menos 1 columna.")
             else:
                 top.destroy()
                 self.columnas_seleccionadas = seleccionadas
@@ -83,13 +106,17 @@ class EtiquetaApp:
 
         top = Toplevel(self.ventana)
         top.title("Selecciona columnas")
-        listbox = Listbox(top, selectmode="multiple")
+        
+        # Listbox estético
+        listbox = Listbox(top, selectmode="multiple", bg="#2E2E2E", fg="white", font=("Arial", 10, "bold"), relief="flat", highlightbackground="#FFD700", highlightthickness=1)
         for col in self.df.columns:
             listbox.insert("end", col)
-        listbox.pack()
+        listbox.pack(pady=10, padx=10, fill="both", expand=True)
 
-        boton_seleccionar = Button(top, text="Seleccionar", command=seleccionar)
-        boton_seleccionar.pack()
+        # Botón estilizado para seleccionar columnas
+        boton_seleccionar = Button(top, text="Seleccionar", command=seleccionar, bg="#FFD700", fg="#1C1C1C", font=("Arial", 10, "bold"), relief="flat")
+        boton_seleccionar.pack(pady=10)
+
         top.mainloop()
 
     def cargar_imagen(self):
@@ -97,6 +124,7 @@ class EtiquetaApp:
         if ruta_imagen:
             try:
                 self.imagen_fondo = Image.open(ruta_imagen)
+                messagebox.showinfo("Éxito", "Imagen cargada exitosamente.")
                 return self.imagen_fondo
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo cargar la imagen: {str(e)}")
@@ -108,19 +136,19 @@ class EtiquetaApp:
         self.canvas.coords(self.etiquetas[etiqueta], event.x, event.y)
 
     def editar_etiquetas(self):
-        self.cargar_imagen()
         if not self.imagen_fondo:
+            messagebox.showerror("Error", "Primero carga una imagen.")
             return
 
         # Escalar la imagen para que no sea más grande que el área disponible
         ancho_max = 580
         alto_max = 580
-        self.imagen_fondo.thumbnail((ancho_max, alto_max), Image.Resampling.LANCZOS)
+        self.imagen_fondo.thumbnail((ancho_max, alto_max), Image.LANCZOS)
 
         # Redimensionar imagen de fondo
         self.imagen_redimensionada = self.imagen_fondo
         self.imagen_tk = ImageTk.PhotoImage(self.imagen_redimensionada)
-        
+
         # Ajustar el canvas al tamaño de la imagen
         self.canvas.config(width=self.imagen_redimensionada.width, height=self.imagen_redimensionada.height)
         self.canvas.create_image(0, 0, anchor="nw", image=self.imagen_tk)
@@ -130,10 +158,13 @@ class EtiquetaApp:
             texto = self.df[columna][0]  # Ejemplo con la primera fila
             self.posiciones_texto[columna] = {'x': 10, 'y': 30 * (i + 1)}
             self.tamaños_texto[columna] = 20
+            self.colores_texto[columna] = "black"  # Color blanco para contraste en fondo oscuro
+            self.fuentes_texto[columna] = "Arial"  # Fuente predeterminada
 
             self.etiquetas[columna] = self.canvas.create_text(
                 self.posiciones_texto[columna]['x'], self.posiciones_texto[columna]['y'],
-                text=texto, font=("Arial", self.tamaños_texto[columna]), anchor="nw"
+                text=texto, font=(self.fuentes_texto[columna], self.tamaños_texto[columna], "bold"),
+                fill=self.colores_texto[columna], anchor="nw"
             )
 
             # Habilitar drag & drop para mover los textos
@@ -150,39 +181,62 @@ class EtiquetaApp:
 
         # Slider para cambiar el tamaño del texto
         for columna in self.columnas_seleccionadas:
-            slider_tamaño = Scale(self.control_inner_frame, from_=10, to=50, orient=HORIZONTAL, label="Tamaño de {}".format(columna))
-
+            slider_tamaño = Scale(self.control_inner_frame, from_=10, to=50, orient=HORIZONTAL, label="Tamaño de {}".format(columna), bg="#1C1C1C", fg="white", font=("Arial", 10, "bold"))
             slider_tamaño.set(self.tamaños_texto[columna])
-            slider_tamaño.pack(fill="x")
+            slider_tamaño.pack(fill="x", pady=5, padx=10)
 
             # Actualización del tamaño en tiempo real
             def actualizar_tamaño(valor, col=columna):
                 self.tamaños_texto[col] = int(valor)
-                self.canvas.itemconfig(self.etiquetas[col], font=("Arial", self.tamaños_texto[col]))
+                self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
 
             slider_tamaño.config(command=actualizar_tamaño)
 
+            # Menú desplegable para elegir la tipografía
+            Label(self.control_inner_frame, text="Tipografía de {}".format(columna), bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack(pady=5)
+            fuente_var = StringVar(self.control_inner_frame)
+            fuente_var.set(self.fuentes_texto[columna])  # Valor predeterminado
+
+            menu_fuente = OptionMenu(self.control_inner_frame, fuente_var, *self.fuentes_disponibles.keys())
+            menu_fuente.pack(fill="x", pady=5)
+
+            def actualizar_fuente(seleccion, col=columna):
+                self.fuentes_texto[col] = seleccion
+                self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
+
+            fuente_var.trace("w", lambda *args: actualizar_fuente(fuente_var.get(), columna))
+
+            # Botón para seleccionar el color del texto
+            def elegir_color(col=columna):
+                color = colorchooser.askcolor(title="Selecciona un color para {}".format(columna))[1]
+                if color:
+                    self.colores_texto[col] = color
+                    self.canvas.itemconfig(self.etiquetas[col], fill=self.colores_texto[col])
+
+            boton_color = Button(self.control_inner_frame, text="Color de {}".format(columna), command=elegir_color, bg="#FF6347", fg="white", font=("Arial", 10, "bold"), relief="flat")
+            boton_color.pack(fill="x", pady=5)
+
         # Opción para definir dimensiones personalizadas de la etiqueta (en milímetros)
-        Label(self.control_inner_frame, text="Dimensiones personalizadas de la etiqueta (mm)").pack()
+        Label(self.control_inner_frame, text="Dimensiones personalizadas de la etiqueta (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack(pady=10)
 
-        Label(self.control_inner_frame, text="Ancho (mm)").pack()
-        ancho_entry = Entry(self.control_inner_frame)
-        ancho_entry.pack()
+        Label(self.control_inner_frame, text="Ancho (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack()
+        ancho_entry = Entry(self.control_inner_frame, bg="#2E2E2E", fg="white")
+        ancho_entry.pack(pady=5, padx=10)
 
-        Label(self.control_inner_frame, text="Alto (mm)").pack()
-        alto_entry = Entry(self.control_inner_frame)
-        alto_entry.pack()
+        Label(self.control_inner_frame, text="Alto (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack()
+        alto_entry = Entry(self.control_inner_frame, bg="#2E2E2E", fg="white")
+        alto_entry.pack(pady=5, padx=10)
 
         # Opción para definir márgenes (en milímetros)
-        Label(self.control_inner_frame, text="Margen entre etiquetas (mm)").pack()
+        Label(self.control_inner_frame, text="Margen entre etiquetas (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack(pady=10)
 
-        Label(self.control_inner_frame, text="Margen horizontal (mm)").pack()
-        margen_x_entry = Entry(self.control_inner_frame)
-        margen_x_entry.pack()
+        Label(self.control_inner_frame, text="Margen horizontal (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack()
+        margen_x_entry = Entry(self.control_inner_frame, bg="#2E2E2E", fg="white")
+        margen_x_entry.pack(pady=5, padx=10)
 
-        Label(self.control_inner_frame, text="Margen vertical (mm)").pack()
-        margen_y_entry = Entry(self.control_inner_frame)
-        margen_y_entry.pack()
+        Label(self.control_inner_frame, text="Margen vertical (mm)", bg="#1C1C1C", fg="white", font=("Arial", 10, "bold")).pack()
+        margen_y_entry = Entry(self.control_inner_frame, bg="#2E2E2E", fg="white")
+        margen_y_entry.pack(pady=5, padx=10)
 
         def establecer_dimensiones_y_margenes():
             try:
@@ -194,15 +248,21 @@ class EtiquetaApp:
             except ValueError:
                 messagebox.showerror("Error", "Por favor ingresa valores numéricos válidos para las dimensiones y márgenes.")
 
-        boton_dimensiones = Button(self.control_inner_frame, text="Establecer dimensiones y márgenes", command=establecer_dimensiones_y_margenes)
-        boton_dimensiones.pack()
+        boton_dimensiones = Button(self.control_inner_frame, text="Establecer dimensiones y márgenes", command=establecer_dimensiones_y_margenes, bg="#FFD700", fg="#1C1C1C", font=("Arial", 10, "bold"), relief="flat")
+        boton_dimensiones.pack(pady=10)
 
         # Botón para exportar a PDF
-        boton_exportar = Button(self.control_inner_frame, text="Exportar a PDF", command=self.exportar_pdf)
-        boton_exportar.pack(fill="x")
+        boton_exportar = Button(self.control_inner_frame, text="Exportar a PDF", command=self.exportar_pdf, bg="#FFD700", fg="#1C1C1C", font=("Arial", 10, "bold"), relief="flat")
+        boton_exportar.pack(fill="x", pady=10)
 
     def exportar_pdf(self):
-        c = canvas.Canvas("etiquetas.pdf", pagesize=A4)
+        # Permitir al usuario elegir el lugar y nombre del archivo PDF
+        ruta_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+
+        if not ruta_pdf:
+            return  # Si el usuario cancela, no hace nada
+
+        c = canvas.Canvas(ruta_pdf, pagesize=A4)
         ancho_hoja, alto_hoja = A4  # Tamaño de una hoja A4 en puntos
 
         # Usar las dimensiones personalizadas para cada etiqueta
@@ -219,7 +279,7 @@ class EtiquetaApp:
         for i, row in self.df.iterrows():
             # Dibujar cada etiqueta
             imagen_pdf = self.generar_imagen_pdf(row)
-            c.drawImage(imagen_pdf, x_offset, y_offset, width=ancho_etiqueta, height=alto_etiqueta)
+            c.drawImage(ImageReader(imagen_pdf), x_offset, y_offset, width=ancho_etiqueta, height=alto_etiqueta)
 
             # Ajustar la posición para la siguiente etiqueta
             x_offset += ancho_etiqueta + margen_x
@@ -236,6 +296,7 @@ class EtiquetaApp:
         messagebox.showinfo("Éxito", "El archivo PDF se ha generado correctamente.")
 
     def generar_imagen_pdf(self, fila):
+        # Crear la imagen en memoria sin guardarla en disco
         imagen_etiqueta = self.imagen_redimensionada.copy()
         draw = ImageDraw.Draw(imagen_etiqueta)
 
@@ -244,22 +305,22 @@ class EtiquetaApp:
             texto = str(fila[columna])
             posicion = (self.posiciones_texto[columna]['x'], self.posiciones_texto[columna]['y'])
             tamaño = self.tamaños_texto[columna]
-            draw.text(posicion, texto, fill="black")
+            # Usar ImageFont.truetype para manejar correctamente las fuentes
+            fuente_truetype = ImageFont.truetype(self.fuentes_disponibles[self.fuentes_texto[columna]], tamaño)
+            draw.text(posicion, texto, font=fuente_truetype, fill=self.colores_texto[columna])
 
-        ruta_imagen_pdf = f"etiqueta_{fila.name}.png"
-        imagen_etiqueta.save(ruta_imagen_pdf)
-        return ruta_imagen_pdf
+        # Guardar la imagen en un buffer en memoria
+        buffer_imagen = io.BytesIO()
+        imagen_etiqueta.save(buffer_imagen, format="PNG")
+        buffer_imagen.seek(0)  # Ir al inicio del buffer para poder leerlo desde el principio
+
+        return buffer_imagen  # Devolver el buffer en memoria
+
 
 def iniciar_programa():
     ventana = Tk()
-    ventana.geometry("900x800")  # Tamaño fijo de la ventana
+    ventana.geometry("1200x800")  # Tamaño fijo de la ventana
     app = EtiquetaApp(ventana)
-
-    # Iniciar el flujo del programa
-    df = app.cargar_excel()
-    if df is not None:
-        app.seleccionar_columnas()
-
     ventana.mainloop()
 
 
