@@ -36,7 +36,7 @@ class EtiquetaApp:
         }
 
         # Frame principal para contener la imagen y los controles a la derecha
-        self.main_frame = Frame(ventana, bg="#1C1C1C")  # Fondo más oscuro para mejor contraste
+        self.main_frame = Frame(ventana, bg="#1C1C1C")  # Fondo oscuro para mejor contraste
         self.main_frame.pack(fill="both", expand=True)
 
         # Frame para la imagen (lado izquierdo)
@@ -70,7 +70,7 @@ class EtiquetaApp:
         self.control_inner_frame.bind("<Configure>", lambda e: self.control_canvas.configure(scrollregion=self.control_canvas.bbox("all")))
 
         # Botones estilizados con mayor contraste y negrita
-        self.boton_cargar_excel = Button(self.control_inner_frame, text="🗂 Cargar archivo Excel", command=self.cargar_excel, bg="#FFD700", fg="#1C1C1C", font=("Arial", 12, "bold"), relief="flat", pady=10)
+        self.boton_cargar_excel = Button(self.control_inner_frame, text="🗂 Cargar Excel", command=self.cargar_excel, bg="#FFD700", fg="#1C1C1C", font=("Arial", 12, "bold"), relief="flat", pady=10)
         self.boton_cargar_excel.pack(fill="x", pady=10)
 
         self.boton_cargar_imagen = Button(self.control_inner_frame, text="🖼 Cargar imagen", command=self.cargar_imagen, bg="#FFD700", fg="#1C1C1C", font=("Arial", 12, "bold"), relief="flat", pady=10)
