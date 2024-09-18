@@ -173,7 +173,6 @@ class EtiquetaApp:
 
         # Colocar controles en el lado derecho
         self.colocar_controles()
-
     def colocar_controles(self):
         # Limpiar el frame de controles
         for widget in self.control_inner_frame.winfo_children():
@@ -190,7 +189,7 @@ class EtiquetaApp:
                 self.tamaños_texto[col] = int(valor)
                 self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
 
-            slider_tamaño.config(command=actualizar_tamaño)
+            slider_tamaño.config(command=lambda valor, col=columna: actualizar_tamaño(valor, col))
 
             # Menú desplegable para elegir la tipografía
             Label(self.control_inner_frame, text="Tipografía de {}".format(columna), bg="#2B2B2B", fg="white", font=("Arial", 10, "bold")).pack(pady=5)
@@ -200,11 +199,11 @@ class EtiquetaApp:
             menu_fuente = OptionMenu(self.control_inner_frame, fuente_var, *self.fuentes_disponibles.keys())
             menu_fuente.pack(fill="x", pady=5)
 
-            def actualizar_fuente(seleccion, col=columna):
+            def actualizar_fuente(col, seleccion):
                 self.fuentes_texto[col] = seleccion
                 self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
 
-            fuente_var.trace("w", lambda *args: actualizar_fuente(fuente_var.get(), columna))
+            fuente_var.trace("w", lambda *args, col=columna, var=fuente_var: actualizar_fuente(col, var.get()))
 
             # Botón para seleccionar el color del texto
             def elegir_color(col=columna):
@@ -216,7 +215,7 @@ class EtiquetaApp:
             boton_color = Button(self.control_inner_frame, text="🎨 Color de {}".format(columna), command=elegir_color, bg="#98C379", fg="white", font=("Arial", 10, "bold"), relief="flat", activebackground="#7FAF67")
             boton_color.pack(fill="x", pady=5)
 
-        # Opción para definir dimensiones personalizadas de la etiqueta (en milímetros)
+        # Fuera del bucle: Dimensiones personalizadas de la etiqueta (solo una vez)
         Label(self.control_inner_frame, text="Dimensiones personalizadas de la etiqueta (mm)", bg="#2B2B2B", fg="white", font=("Arial", 10, "bold")).pack(pady=10)
 
         Label(self.control_inner_frame, text="Ancho (mm)", bg="#2B2B2B", fg="white", font=("Arial", 10, "bold")).pack()
@@ -251,10 +250,11 @@ class EtiquetaApp:
         boton_dimensiones = Button(self.control_inner_frame, text="🛠️ Establecer dimensiones y márgenes", command=establecer_dimensiones_y_margenes, bg="#61AFEF", fg="white", font=("Arial", 10, "bold"), relief="flat", activebackground="#4A9FEF")
         boton_dimensiones.pack(pady=10)
 
-        # Botón para exportar a PDF
+        # Botón para exportar a PDF (solo una vez)
         boton_exportar = Button(self.control_inner_frame, text="📄 Exportar a PDF", command=self.exportar_pdf, bg="#61AFEF", fg="white", font=("Arial", 10, "bold"), relief="flat", activebackground="#4A9FEF")
         boton_exportar.pack(fill="x", pady=10)
 
+    
     def exportar_pdf(self):
         # Permitir al usuario elegir el lugar y nombre del archivo PDF
         ruta_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
@@ -305,8 +305,15 @@ class EtiquetaApp:
             texto = str(fila[columna])
             posicion = (self.posiciones_texto[columna]['x'], self.posiciones_texto[columna]['y'])
             tamaño = self.tamaños_texto[columna]
-            # Usar ImageFont.truetype para manejar correctamente las fuentes
-            fuente_truetype = ImageFont.truetype(self.fuentes_disponibles[self.fuentes_texto[columna]], tamaño)
+            
+            # Intentar cargar la fuente
+            try:
+                fuente_truetype = ImageFont.truetype(self.fuentes_disponibles[self.fuentes_texto[columna]], tamaño)
+            except OSError:
+                messagebox.showerror("Error", f"No se pudo cargar la fuente {self.fuentes_texto[columna]}. Se usará la fuente predeterminada.")
+                # Cargar una fuente predeterminada en caso de error
+                fuente_truetype = ImageFont.load_default()
+            
             draw.text(posicion, texto, font=fuente_truetype, fill=self.colores_texto[columna])
 
         # Guardar la imagen en un buffer en memoria
@@ -315,6 +322,7 @@ class EtiquetaApp:
         buffer_imagen.seek(0)  # Ir al inicio del buffer para poder leerlo desde el principio
 
         return buffer_imagen  # Devolver el buffer en memoria
+
 
 
 def iniciar_programa():
