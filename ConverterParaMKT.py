@@ -1,6 +1,7 @@
+import os  # Para manejar las rutas de los archivos
 import pandas as pd
 from tkinter import Tk, filedialog, Canvas, Button, Scale, Listbox, messagebox, Toplevel, Scrollbar, Label, Entry, HORIZONTAL, StringVar, OptionMenu, colorchooser
-from tkinter import Frame
+from tkinter import Frame, font as tkfont  # Para las fuentes estándar de Tkinter
 from PIL import Image, ImageTk, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -26,13 +27,43 @@ class EtiquetaApp:
         self.margen_x_custom = 0
         self.margen_y_custom = 0
 
-        # Lista de tipografías disponibles (rutas a archivos .ttf)
+        # Obtener la ruta del directorio actual (donde se encuentra este script)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Lista de tipografías disponibles (rutas a archivos .ttf en la misma carpeta del script)
         self.fuentes_disponibles = {
-            "Arial": "arial.ttf",
-            "Helvetica": "Helvetica.ttc",
-            "Courier": "cour.ttf",
-            "Times": "times.ttf",
-            "Verdana": "verdana.ttf"
+            "Arial": os.path.join(base_dir, "arial.ttf"),
+            "Helvetica": os.path.join(base_dir, "Helvetica.ttc"),
+            "Courier": os.path.join(base_dir, "cour.ttf"),
+            "Times": os.path.join(base_dir, "times.ttf"),
+            "Verdana": os.path.join(base_dir, "verdana.ttf"),
+            # Fuentes Futura
+            # "Futura45Light": os.path.join(base_dir, "FUTURA45LIGHT.TTF"),
+            # "Futura46LightItalic": os.path.join(base_dir, "FUTURA46LIGHTITALIC.TTF"),
+            # "Futura55Regular": os.path.join(base_dir, "FUTURA55REGULAR.TTF"),
+            # "Futura56Italic": os.path.join(base_dir, "FUTURA56ITALIC.TTF"),
+            # "Futura65Medium": os.path.join(base_dir, "FUTURA65MEDIUM.TTF"),
+            # "Futura66MediumItalic": os.path.join(base_dir, "FUTURA66MEDIUMITALIC.TTF"),
+            # "Futura75Bold": os.path.join(base_dir, "FUTURA75BOLD.TTF"),
+            # "Futura76BoldItalic": os.path.join(base_dir, "FUTURA76BOLDITALIC.TTF")
+        }
+
+        # Fuentes estándar para la previsualización en Canvas (Tkinter)
+        self.tk_fuentes = {
+            "Arial": "Arial",
+            "Helvetica": "Helvetica",
+            "Courier": "Courier",
+            "Times": "Times",
+            "Verdana": "Verdana",
+            # Mapeo personalizado para la fuente futura
+            "Futura45Light": "Helvetica",
+            "Futura46LightItalic": "Helvetica",
+            "Futura55Regular": "Helvetica",
+            "Futura56Italic": "Helvetica",
+            "Futura65Medium": "Helvetica",
+            "Futura66MediumItalic": "Helvetica",
+            "Futura75Bold": "Helvetica",
+            "Futura76BoldItalic": "Helvetica"
         }
 
         # Frame principal para contener la imagen y los controles a la derecha
@@ -83,9 +114,31 @@ class EtiquetaApp:
         ruta_excel = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
         if ruta_excel:
             try:
+                # Cargar el archivo Excel
                 self.df = pd.read_excel(ruta_excel)
+
+                # Función para eliminar los decimales de números, excepto cuando contienen el símbolo de moneda
+                def procesar_valor(x):
+                    if isinstance(x, (int, float)) and not isinstance(x, bool):  # Verificar que sea número y no booleano
+                        # Si es un número con decimales, los elimina
+                        return int(x) if x == int(x) else x
+                    elif isinstance(x, str):  # Si es una cadena, verificar si es un número
+                        try:
+                            # Convertir a float si es posible
+                            valor_numero = float(x)
+                            # Convertir a entero si no hay parte decimal
+                            return int(valor_numero) if valor_numero == int(valor_numero) else x
+                        except ValueError:
+                            # Si la conversión falla, es un texto normal
+                            return x
+                    else:
+                        return x
+
+                # Aplicar la función a todo el DataFrame
+                self.df = self.df.applymap(procesar_valor)
+
                 self.boton_seleccionar_columnas.config(state="normal")  # Habilitar botón de seleccionar columnas
-                messagebox.showinfo("Éxito", "Archivo Excel cargado exitosamente.")
+                messagebox.showinfo("Éxito", "Archivo Excel cargado exitosamente y valores numéricos procesados.")
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo cargar el archivo Excel: {str(e)}")
         return None
@@ -94,7 +147,7 @@ class EtiquetaApp:
         if self.df is None:
             messagebox.showerror("Error", "Primero carga un archivo Excel.")
             return
-        
+
         def seleccionar():
             seleccionadas = [self.df.columns[i] for i in listbox.curselection()]
             if len(seleccionadas) < 1:  # Cambiado a mínimo 1 columna
@@ -106,7 +159,7 @@ class EtiquetaApp:
 
         top = Toplevel(self.ventana)
         top.title("Selecciona columnas")
-        
+
         # Listbox estético y moderno
         listbox = Listbox(top, selectmode="multiple", bg="#3A3A3A", fg="white", font=("Arial", 11, "bold"), relief="flat", highlightbackground="#61AFEF", highlightthickness=2, bd=0)
         for col in self.df.columns:
@@ -119,12 +172,15 @@ class EtiquetaApp:
 
         top.mainloop()
 
+
+
     def cargar_imagen(self):
         ruta_imagen = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg *.png")])
         if ruta_imagen:
             try:
                 self.imagen_fondo = Image.open(ruta_imagen)
                 messagebox.showinfo("Éxito", "Imagen cargada exitosamente.")
+                self.actualizar_previsualizacion()  # Actualizar la previsualización tras cargar la imagen
                 return self.imagen_fondo
             except Exception as e:
                 messagebox.showerror("Error", f"No se pudo cargar la imagen: {str(e)}")
@@ -161,9 +217,10 @@ class EtiquetaApp:
             self.colores_texto[columna] = "black"  # Color blanco para contraste en fondo oscuro
             self.fuentes_texto[columna] = "Arial"  # Fuente predeterminada
 
+            # Utilizar fuentes estándar de Tkinter para la previsualización
             self.etiquetas[columna] = self.canvas.create_text(
                 self.posiciones_texto[columna]['x'], self.posiciones_texto[columna]['y'],
-                text=texto, font=(self.fuentes_texto[columna], self.tamaños_texto[columna], "bold"),
+                text=texto, font=(self.tk_fuentes[self.fuentes_texto[columna]], self.tamaños_texto[columna], "bold"),
                 fill=self.colores_texto[columna], anchor="nw"
             )
 
@@ -173,6 +230,7 @@ class EtiquetaApp:
 
         # Colocar controles en el lado derecho
         self.colocar_controles()
+
     def colocar_controles(self):
         # Limpiar el frame de controles
         for widget in self.control_inner_frame.winfo_children():
@@ -187,7 +245,7 @@ class EtiquetaApp:
             # Actualización del tamaño en tiempo real
             def actualizar_tamaño(valor, col=columna):
                 self.tamaños_texto[col] = int(valor)
-                self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
+                self.canvas.itemconfig(self.etiquetas[col], font=(self.tk_fuentes[self.fuentes_texto[col]], self.tamaños_texto[col], "bold"))
 
             slider_tamaño.config(command=lambda valor, col=columna: actualizar_tamaño(valor, col))
 
@@ -201,7 +259,7 @@ class EtiquetaApp:
 
             def actualizar_fuente(col, seleccion):
                 self.fuentes_texto[col] = seleccion
-                self.canvas.itemconfig(self.etiquetas[col], font=(self.fuentes_texto[col], self.tamaños_texto[col], "bold"))
+                self.canvas.itemconfig(self.etiquetas[col], font=(self.tk_fuentes[self.fuentes_texto[col]], self.tamaños_texto[col], "bold"))
 
             fuente_var.trace("w", lambda *args, col=columna, var=fuente_var: actualizar_fuente(col, var.get()))
 
@@ -254,7 +312,25 @@ class EtiquetaApp:
         boton_exportar = Button(self.control_inner_frame, text="📄 Exportar a PDF", command=self.exportar_pdf, bg="#61AFEF", fg="white", font=("Arial", 10, "bold"), relief="flat", activebackground="#4A9FEF")
         boton_exportar.pack(fill="x", pady=10)
 
-    
+    def actualizar_previsualizacion(self):
+        """ Método para actualizar la previsualización del Canvas con la imagen cargada y los textos. """
+        if not self.imagen_fondo:
+            messagebox.showerror("Error", "Primero carga una imagen.")
+            return
+
+        # Escalar la imagen para que no sea más grande que el área disponible
+        ancho_max = 580
+        alto_max = 580
+        self.imagen_fondo.thumbnail((ancho_max, alto_max), Image.LANCZOS)
+
+        # Redimensionar imagen de fondo
+        self.imagen_redimensionada = self.imagen_fondo
+        self.imagen_tk = ImageTk.PhotoImage(self.imagen_redimensionada)
+
+        # Ajustar el canvas al tamaño de la imagen
+        self.canvas.config(width=self.imagen_redimensionada.width, height=self.imagen_redimensionada.height)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.imagen_tk)
+
     def exportar_pdf(self):
         # Permitir al usuario elegir el lugar y nombre del archivo PDF
         ruta_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
@@ -305,15 +381,15 @@ class EtiquetaApp:
             texto = str(fila[columna])
             posicion = (self.posiciones_texto[columna]['x'], self.posiciones_texto[columna]['y'])
             tamaño = self.tamaños_texto[columna]
-            
-            # Intentar cargar la fuente
+
+            # Intentar cargar la fuente personalizada en PIL
             try:
                 fuente_truetype = ImageFont.truetype(self.fuentes_disponibles[self.fuentes_texto[columna]], tamaño)
             except OSError:
                 messagebox.showerror("Error", f"No se pudo cargar la fuente {self.fuentes_texto[columna]}. Se usará la fuente predeterminada.")
                 # Cargar una fuente predeterminada en caso de error
                 fuente_truetype = ImageFont.load_default()
-            
+
             draw.text(posicion, texto, font=fuente_truetype, fill=self.colores_texto[columna])
 
         # Guardar la imagen en un buffer en memoria
@@ -323,14 +399,11 @@ class EtiquetaApp:
 
         return buffer_imagen  # Devolver el buffer en memoria
 
-
-
 def iniciar_programa():
     ventana = Tk()
     ventana.geometry("1200x800")  # Tamaño fijo de la ventana
     app = EtiquetaApp(ventana)
     ventana.mainloop()
-
 
 if __name__ == "__main__":
     iniciar_programa()
